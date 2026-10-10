@@ -1,22 +1,27 @@
-const login_module = require('../module/loginScheme');
+const login_module = require('../module/SignUpSchema');
 const express = require('express');
 const router = express.Router();
  
 router.post('/',async(req,res) => {
     try{
-        const{Email,password}=req.body;
+        const{Name,Registration_no,Email,Password, Domain,Post,Year}=req.body;
         const existinguser=await login_module.findOne({Email});
         if(existinguser){
             return res.status(409).json({
                 message:"User already Exists"});
         }
         const newuser=new login_module({
+            Name,
+            Registration_no,
             Email,
-            password
+            Password:Password,
+            Domain,
+            Post,
+            Year
         });
         await newuser.save();
 
-        res.staus(201).json({
+        res.status(201).json({
             message:"user created successfully"
         });
         console.log("new user creatd successfully");
