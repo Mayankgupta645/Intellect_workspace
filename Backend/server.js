@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('./db/db');
 const login = require('./router/loginrouter');
 const signup=require('./router/signuprouter');
+const profile = require('./router/profilerouter');
 const app = express();
 app.use(express.json());
 
@@ -10,6 +11,7 @@ app.get('/home',(req,res)=>{
 })
 app.use('/login',login);
 app.use('/signup',signup);
+app.use('/profile',profile);
 
 app.listen('5000',(req,res)=>{
 console.log("server is running");
