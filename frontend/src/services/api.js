@@ -58,7 +58,7 @@ export async function request(route, { method = "GET", body, signal } = {}) {
       const url = /^https?:\/\//i.test(path)
         ? path
         : baseUrl
-          ? `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`
+          ? `${baseUrl}${path.startsWith("/api/") ? path.slice(4) : path.startsWith("/") ? path : `/${path}`}`
           : path;
       response = await fetch(url, {
         method,
