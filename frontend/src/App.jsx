@@ -1578,10 +1578,10 @@ function HistoryTable({ records, admin = false }) {
       <table className="data-table">
         <thead><tr>{admin && <><th>Member</th><th>Register number</th></>}<th>Session</th><th>{admin ? "Day, date / time" : "Date / time"}</th><th>Status</th></tr></thead>
         <tbody>{records.map((record, index) => <tr key={record.id || `${record.registerNumber || "record"}-${index}`}>
-          {admin && <><td>{record.memberName || record.name || record.email || record.memberId || "—"}</td><td>{record.registerNumber || "—"}</td></>}
-          <td>{record.sessionName || record.eventName || record.sessionId || "Attendance"}</td>
-          <td>{formatDate(record.date || record.createdAt || record.timestamp)}</td>
-          <td><span className="history-status">{record.status || record.attendanceStatus || "Recorded"}</span></td>
+          {admin && <><td data-label="Member">{record.memberName || record.name || record.email || record.memberId || "—"}</td><td data-label="Register number">{record.registerNumber || "—"}</td></>}
+          <td data-label="Session">{record.sessionName || record.eventName || record.sessionId || "Attendance"}</td>
+          <td data-label={admin ? "Day, date / time" : "Date / time"}>{formatDate(record.date || record.createdAt || record.timestamp)}</td>
+          <td data-label="Status"><span className="history-status">{record.status || record.attendanceStatus || "Recorded"}</span></td>
         </tr>)}</tbody>
       </table>
     </div>
