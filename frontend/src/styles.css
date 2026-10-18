@@ -529,6 +529,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .page-title-row h1 { font-size: 28px; }
   .profile-edit-form { grid-template-columns: 1fr; }
   .member-directory { grid-template-columns: 1fr; }
+  .portal-sidebar { padding-top: max(13px, env(safe-area-inset-top)); }
+  .portal-nav { scrollbar-width: none; overscroll-behavior-x: contain; }
+  .portal-nav::-webkit-scrollbar { display: none; }
+  .portal-nav a { min-height: 42px; }
+  .portal-topbar { min-height: 56px; height: auto; gap: 12px; }
+  .portal-breadcrumb { min-width: 0; line-height: 1.5; }
+  .portal-top-actions { min-width: 0; }
+  .portal-user { min-width: 0; }
+  .dashboard-panel { padding: 17px; }
+  .profile-image-preview > img { width: 76px; height: 76px; }
+  .profile-image-button { min-height: 42px; }
+  .auth-page { min-height: 100svh; padding-top: max(100px, calc(env(safe-area-inset-top) + 76px)); padding-bottom: max(64px, env(safe-area-inset-bottom)); }
+  .modal-backdrop { padding: 12px; }
+  .gallery-modal, .gallery-modal > img { min-height: min(72svh, 540px); height: min(72svh, 540px); }
 }
 @media (max-width: 460px) {
   .hero-section { min-height: 690px; padding-top: 68px; }
@@ -548,6 +562,32 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .intro-copy p { font-size: clamp(1.35rem, 7vw, 2rem); letter-spacing: .16em; }
   .portal-user > span:nth-child(2) { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .portal-breadcrumb { font-size: 7px; }
+  .portal-topbar { padding: 8px 12px; }
+  .portal-top-actions { gap: 7px; }
+  .portal-user { gap: 6px; }
+  .portal-user .user-presence { display: none; }
+  .portal-content { padding: 20px 12px 36px; }
+  .dashboard-panel { padding: 15px 13px; }
+  .admin-metric-grid { gap: 8px; }
+  .admin-metric { padding: 13px 11px; }
+  .admin-metric > strong { font-size: 19px; }
+  .page-title-row { gap: 10px; margin-bottom: 18px; }
+  .page-title-row h1 { overflow-wrap: anywhere; font-size: 25px; }
+  .panel-heading { flex-wrap: wrap; gap: 8px; }
+  .profile-data { padding: 13px; }
+  .profile-image-preview { align-items: center; gap: 9px; }
+  .profile-image-preview > img, .profile-photo { width: 84px; height: 84px; }
+  .profile-image-preview .button { min-height: 42px; }
+  .profile-edit-form .button-row { display: grid; grid-template-columns: 1fr; }
+  .profile-edit-form .button-row .button { width: 100%; min-height: 44px; }
+  .profile-summary .profile-detail-row { align-items: flex-start; gap: 12px; }
+  .profile-detail-row strong { max-width: 58%; overflow-wrap: anywhere; text-align: right; }
+  .member-profile-inline { min-width: 0; }
+  .member-profile-inline > div { min-width: 0; }
+  .member-profile-inline h2 { overflow-wrap: anywhere; }
+  .pagination { align-items: flex-start; flex-direction: column; }
+  .pagination > div { width: 100%; justify-content: space-between; gap: 5px; }
+  .pagination .button { padding: 0 8px; }
   .page-title-row { align-items: flex-start; flex-direction: column; }
   .page-title-row > .button, .page-title-row > .live-indicator { margin-top: 5px; }
   .code-form { align-items: stretch; flex-direction: column; }
@@ -558,6 +598,34 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .records-date-filter, .records-date-filter input { width: 100%; }
   .search-field { width: 100%; }
   .data-table th, .data-table td { padding-right: 17px; }
+  .gallery-controls { gap: 10px; }
+  .gallery-dots { max-width: 55%; overflow-x: auto; padding: 5px 0; }
+  .gallery-arrows button { width: 44px; height: 44px; }
+  .social-links { flex-wrap: wrap; justify-content: center; gap: 12px 18px; }
+  .scroll-trail { right: 5px; padding: 10px 7px; }
+  .intro-skip { top: max(14px, env(safe-area-inset-top)); right: 14px; }
+  .intro-caption { max-width: 85vw; font-size: 8px; line-height: 1.7; letter-spacing: .1em; }
+}
+@media (hover: none) and (pointer: coarse) {
+  .button, .menu-toggle, .gallery-arrows button, .modal-close, .theme-toggle, .intro-skip, .portal-nav a, .main-nav a { min-height: 44px; }
+  .search-field input, .field-label input, .field-label select { min-height: 44px; font-size: 16px; }
+  .search-field input { height: 44px; }
+  .profile-image-button input { min-height: 100%; }
+}
+@media (max-width: 360px) {
+  .portal-sidebar { grid-template-columns: minmax(0, 1fr) auto; padding-right: 10px; padding-left: 10px; }
+  .portal-sidebar > .brand { gap: 7px; }
+  .portal-sidebar .brand-icon { width: 34px; height: 34px; }
+  .sidebar-bottom { gap: 8px; }
+  .sidebar-bottom > a, .sidebar-logout { font-size: 8px; }
+  .portal-nav a { padding: 8px; }
+  .portal-nav a > span { display: none; }
+  .portal-topbar { align-items: flex-start; }
+  .portal-breadcrumb { max-width: 42%; }
+  .portal-user > span:nth-child(2) { max-width: 68px; }
+  .theme-toggle { gap: 4px; }
+  .theme-toggle span { font-size: 9px; }
+  .admin-metric-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
