@@ -18,7 +18,7 @@ export const apiRoutes = {
   adminRecords: env.VITE_API_ADMIN_ATTENDANCE_RECORDS_PATH || "/api/attendance/admin/records",
 };
 
-const baseUrl = (env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const baseUrl = (env.VITE_API_BASE_URL ?? "https://intellect-workspace.onrender.com").replace(/\/+$/, "");
 let pendingRequests = 0;
 
 function updatePendingRequests(change) {
