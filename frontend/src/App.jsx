@@ -5,6 +5,7 @@ import {
   ApiError,
   attendanceIsActive,
   explainApiError,
+  getPendingRequestCount,
   isConfigured,
   request,
   unwrapList,
@@ -171,9 +172,53 @@ function Intro({ onFinish }) {
           <span className="eyebrow">INTELLECTS · SRM IST RAMAPURAM</span>
           <div className="intro-loading-line"><p>LOADING<span className="loading-dots">...</span></p></div>
           <div className="intro-progress" role="progressbar" aria-label="Loading website" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div>
-          <span className="intro-caption">{clubBrand.slogan}</span>
+          <span className="intro-caption">Please wait — good things are loading.</span>
       </div>
       <button className="intro-skip" onClick={onFinish}>Skip intro <span aria-hidden="true">↗</span></button>
+    </div>
+  );
+}
+
+function ApiLoadingIndicator() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    let timer;
+    let pending = 0;
+    let shown = false;
+
+    function handleRequestState(event) {
+      pending = event.detail?.pending || 0;
+      if (pending > 0) {
+        if (!timer && !shown) {
+          timer = window.setTimeout(() => {
+            timer = undefined;
+            shown = true;
+            setVisible(true);
+          }, 500);
+        }
+        return;
+      }
+      window.clearTimeout(timer);
+      timer = undefined;
+      shown = false;
+      setVisible(false);
+    }
+
+    window.addEventListener("api-request-state", handleRequestState);
+    handleRequestState({ detail: { pending: getPendingRequestCount() } });
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("api-request-state", handleRequestState);
+    };
+  }, []);
+
+  if (!visible) return null;
+  return (
+    <div className="api-loading-overlay" role="status" aria-live="polite" aria-busy="true">
+      <span className="api-loading-spinner" aria-hidden="true" />
+      <strong>Please wait — good things are loading.</strong>
+      <span>The service may be waking up. This can take a little longer on the first request.</span>
     </div>
   );
 }
@@ -218,6 +263,7 @@ function App() {
     <ThemeContext.Provider value={themeContext}>
       <AuthProvider>
         {showIntro && <Intro onFinish={finishIntro} />}
+        <ApiLoadingIndicator />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginChoice />} />

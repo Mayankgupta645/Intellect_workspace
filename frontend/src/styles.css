@@ -444,6 +444,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .pagination > div > span { white-space: nowrap; }
 .center-state { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 12px; color: #a99eb8; background: var(--bg); font-size: 11px; }
 .loader-mark { width: 30px; height: 30px; border: 1px solid rgba(192, 160, 245, .3); border-top-color: #d3b8ff; border-radius: 50%; animation: mark-turn .8s linear infinite; }
+.api-loading-overlay { position: fixed; z-index: 1100; inset: 0; display: grid; align-content: center; justify-items: center; gap: 14px; padding: 24px; color: #f3f0fa; background: rgba(9, 8, 16, .92); text-align: center; backdrop-filter: blur(10px); }
+.api-loading-overlay strong { font-size: clamp(16px, 3vw, 22px); }
+.api-loading-overlay > span:last-child { max-width: 420px; color: #aaa2b7; font-size: 13px; line-height: 1.6; }
+.api-loading-spinner { width: 34px; height: 34px; border: 2px solid rgba(192, 160, 245, .25); border-top-color: #d3b8ff; border-radius: 50%; animation: mark-turn .8s linear infinite; }
+:root[data-theme="light"] .api-loading-overlay { color: #211b2c; background: rgba(247, 245, 251, .94); }
+:root[data-theme="light"] .api-loading-overlay > span:last-child { color: #645d70; }
 
 @keyframes blink { 50% { opacity: .2; } }
 @keyframes mark-turn { to { transform: rotate(360deg); } }
