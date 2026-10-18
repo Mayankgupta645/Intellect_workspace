@@ -1,76 +1,24 @@
 const env = import.meta.env;
 
 export const apiRoutes = {
-  login: env.VITE_API_LOGIN_PATH,
-  logout: env.VITE_API_LOGOUT_PATH,
-  register: env.VITE_API_REGISTER_PATH,
-  me: env.VITE_API_ME_PATH,
+  login: env.VITE_API_LOGIN_PATH || "/api/login",
+  logout: env.VITE_API_LOGOUT_PATH || "/api/login/logout",
+  register: env.VITE_API_REGISTER_PATH || "/api/signup",
+  me: env.VITE_API_ME_PATH || "/api/profile/me",
   passwordReset: env.VITE_API_PASSWORD_RESET_PATH,
-  postOptions: env.VITE_API_POST_OPTIONS_PATH,
-  profileUpdate: env.VITE_API_PROFILE_UPDATE_PATH,
-  attendanceStatus: env.VITE_API_ATTENDANCE_STATUS_PATH,
-  attendanceSubmit: env.VITE_API_ATTENDANCE_SUBMIT_PATH,
-  attendanceHistory: env.VITE_API_ATTENDANCE_HISTORY_PATH,
-  adminActivate: env.VITE_API_ADMIN_ATTENDANCE_ACTIVATE_PATH,
-  adminGenerateCode: env.VITE_API_ADMIN_ATTENDANCE_GENERATE_CODE_PATH,
-  adminDeactivate: env.VITE_API_ADMIN_ATTENDANCE_DEACTIVATE_PATH,
-  adminRecords: env.VITE_API_ADMIN_ATTENDANCE_RECORDS_PATH,
+  profileUpdate: env.VITE_API_PROFILE_UPDATE_PATH || "/api/profile",
+  adminMembers: "/api/admin/members",
+  coreApplications: "/api/admin/core-applications",
+  attendanceStatus: env.VITE_API_ATTENDANCE_STATUS_PATH || "/api/attendance/status",
+  attendanceSubmit: env.VITE_API_ATTENDANCE_SUBMIT_PATH || "/api/attendance/submit",
+  attendanceHistory: env.VITE_API_ATTENDANCE_HISTORY_PATH || "/api/attendance/history",
+  adminActivate: env.VITE_API_ADMIN_ATTENDANCE_ACTIVATE_PATH || "/api/attendance/admin/activate",
+  adminGenerateCode: env.VITE_API_ADMIN_ATTENDANCE_GENERATE_CODE_PATH || "/api/attendance/admin/generate-code",
+  adminDeactivate: env.VITE_API_ADMIN_ATTENDANCE_DEACTIVATE_PATH || "/api/attendance/admin/deactivate",
+  adminRecords: env.VITE_API_ADMIN_ATTENDANCE_RECORDS_PATH || "/api/attendance/admin/records",
 };
 
 const baseUrl = (env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
-const localDemoKey = "intellects-local-demo";
-const localDemoAccounts = import.meta.env.DEV ? {
-  member: { email: "member.demo@intellects.local", password: "MemberDemo2026!" },
-  admin: { email: "admin.demo@intellects.local", password: "AdminDemo2026!" },
-} : null;
-
-export function localDemoAvailable() {
-  return env.DEV
-    && typeof window !== "undefined"
-    && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-}
-
-export function localDemoCredentials(role) {
-  if (!localDemoAvailable() || !localDemoAccounts || (role !== "member" && role !== "admin")) return null;
-  return localDemoAccounts[role];
-}
-
-export function authenticateLocalDemo(email, password) {
-  if (!localDemoAvailable() || !localDemoAccounts) return "";
-  return Object.entries(localDemoAccounts).find(([, account]) =>
-    account.email === String(email).trim().toLowerCase() && account.password === password
-  )?.[0] || "";
-}
-
-export function localDemoRole() {
-  if (!localDemoAvailable()) return "";
-  try {
-    const role = window.sessionStorage.getItem(localDemoKey);
-    return role === "member" || role === "admin" ? role : "";
-  } catch {
-    return "";
-  }
-}
-
-export function saveLocalDemoRole(role) {
-  if (!localDemoAvailable() || (role !== "member" && role !== "admin")) {
-    throw new ApiError("Local demo accounts are only available on the development server.", 0, "DEMO_UNAVAILABLE");
-  }
-  try {
-    window.sessionStorage.setItem(localDemoKey, role);
-  } catch {
-    throw new ApiError("Could not sign in because browser session storage is unavailable.", 0, "DEMO_STORAGE_UNAVAILABLE");
-  }
-}
-
-export function clearLocalDemoRole() {
-  if (!localDemoAvailable()) return;
-  try {
-    window.sessionStorage.removeItem(localDemoKey);
-  } catch {
-    throw new ApiError("Could not end the demo session because browser session storage is unavailable.", 0, "DEMO_STORAGE_UNAVAILABLE");
-  }
-}
 
 export class ApiError extends Error {
   constructor(message, status = 0, code = "") {
@@ -86,20 +34,19 @@ export function isConfigured(route) {
 }
 
 export async function request(route, { method = "GET", body, signal } = {}) {
-  if (localDemoRole()) {
-    throw new ApiError("API-backed actions are disabled for local demo accounts.", 0, "LOCAL_DEMO");
-  }
   const path = apiRoutes[route];
   if (!path) {
     throw new ApiError(`The ${route} API route is not configured.`, 0, "NOT_CONFIGURED");
   }
-  if (!baseUrl && !/^https?:\/\//i.test(path)) {
-    throw new ApiError("The API base URL is not configured.", 0, "NOT_CONFIGURED");
-  }
 
   let response;
   try {
-    response = await fetch(/^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`, {
+    const url = /^https?:\/\//i.test(path)
+      ? path
+      : baseUrl
+        ? `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`
+        : path;
+    response = await fetch(url, {
       method,
       credentials: "include",
       headers: body === undefined ? { Accept: "application/json" } : {
@@ -131,9 +78,9 @@ export async function request(route, { method = "GET", body, signal } = {}) {
     const code = data?.code || data?.errorCode || "";
     const serverMessage = data?.message || data?.error;
     const message = response.status === 401
-      ? "Your session has expired or the supplied credentials are not valid."
+      ? (typeof serverMessage === "string" ? serverMessage : "Your session has expired or the supplied credentials are not valid.")
       : response.status === 403
-        ? "You are not authorised to perform this action."
+        ? (typeof serverMessage === "string" ? serverMessage : "You are not authorised to perform this action.")
         : response.status >= 500
           ? "The service is temporarily unavailable. Please try again later."
           : (typeof serverMessage === "string" ? serverMessage : `Request failed (${response.status}).`);
@@ -156,7 +103,7 @@ export function unwrapObject(data) {
 
 export function unwrapList(data) {
   if (Array.isArray(data)) return data;
-  for (const key of ["records", "items", "options", "data", "history"]) {
+  for (const key of ["records", "items", "options", "data", "history", "applications", "users"]) {
     if (Array.isArray(data?.[key])) return data[key];
   }
   return [];
@@ -167,8 +114,13 @@ export function userIsAdmin(user) {
   const roles = Array.isArray(user?.roles) ? user.roles.map((item) => String(item).toLowerCase()) : [];
   return user?.isAdmin === true
     || user?.isCoreTeamAdmin === true
-    || ["admin", "core_team_admin", "administrator"].includes(role)
-    || roles.some((item) => ["admin", "core_team_admin", "administrator"].includes(item));
+    || ["admin", "core", "core_team", "core_team_admin", "administrator"].includes(role)
+    || roles.some((item) => ["admin", "core", "core_team", "core_team_admin", "administrator"].includes(item));
+}
+
+export function userCanApproveCore(user) {
+  const role = String(user?.role || user?.accountType || "").toLowerCase().replace(/[\s-]+/g, "_");
+  return role === "admin" || user?.isAdmin === true;
 }
 
 export function attendanceIsActive(data) {

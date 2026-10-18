@@ -1,42 +1,74 @@
-const db = require('../db/db');
 const mongoose = require('mongoose');
 
 const signupSchema = new mongoose.Schema({
-
-    Name:{
-        type:String,
+    Name: {
+        type: String,
         required: true,
+        trim: true
     },
-    Registration_no:{
-        type:String,
+    Registration_no: {
+        type: String,
+        required: function () { return this.Role !== 'admin'; },
+        unique: true,
+        trim: true
+    },
+    Email: {
+        type: String,
         required: true,
-        unique: true
+        unique: true,
+        lowercase: true,
+        trim: true
     },
-    Email:{
-        type:String,
+    Password: {
+        type: String,
         required: true,
-        unique: true
+        select: false
     },
-    Password:{
-        type:String,
+    Domain: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    Post: {
+        type: String,
+        required: true,
+        trim: true,
+        default: 'Member'
+    },
+    Year: {
+        type: Number,
+        required: function () { return this.Role !== 'admin'; },
+        min: 1,
+        max: 4
+    },
+    Class: {
+        type: String,
+        required: function () { return this.Role !== 'admin'; },
+        trim: true,
+        maxlength: 80
+    },
+    Section: {
+        type: String,
+        required: function () { return this.Role !== 'admin'; },
+        trim: true,
+        maxlength: 30
+    },
+    Role: {
+        type: String,
+        enum: ['member', 'core', 'admin'],
+        default: 'member',
         required: true
     },
-
-    Domain:{
+    CoreApproval: {
         type: String,
-        required:true
+        enum: ['not_required', 'pending', 'approved', 'rejected'],
+        default: 'not_required',
+        required: true
     },
-    Post:{
+    ProfilePicture: {
         type: String,
-        required:true
-    },
-    Year:{
-        type:Number,
-        required:true
+        default: ''
     }
+}, { timestamps: true });
 
-})
-
-
-const signup_module = mongoose.model('signup',signupSchema);
-module.exports =  signup_module;
+module.exports = mongoose.model('signup', signupSchema);

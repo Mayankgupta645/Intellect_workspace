@@ -9,34 +9,13 @@ npm install
 npm run dev
 ```
 
-## Local demo accounts
-
-Use these fake accounts on the Vite development server at `localhost` or `127.0.0.1`:
-
-| Login page | Email | Password |
-|---|---|---|
-| `/member/login` | `member.demo@intellects.local` | `MemberDemo2026!` |
-| `/admin/login` | `admin.demo@intellects.local` | `AdminDemo2026!` |
-
-These accounts are accepted only in local development and are not backend users. They allow sign-in to the member and admin dashboard layouts; sessions last only for the browser session. API requests and dashboard write actions are blocked for demo accounts, so they cannot modify backend data. Demo sign-in is unavailable in production builds.
-
 ## Backend integration
 
-No backend source or API contract was included with the project. API routes are therefore not guessed or called by default. Copy `.env.example` to `.env.local` and set the base URL and only the routes that exist in the backend. Requests use cookie credentials (`credentials: "include"`); authentication state and tokens are not written to local storage.
+The frontend connects to the included backend by default. Configure `Backend/.env` with `MONGODB_URI`, `ADMIN_EMAIL`, and a newly chosen `ADMIN_PASSWORD` (12+ characters with uppercase and lowercase letters, a number, and a special character), then start MongoDB and run the backend from `Backend` with `npm start`. The backend creates or promotes only the account matching `ADMIN_EMAIL`; it hashes the configured password and synchronizes it on startup. In another terminal, run `npm run dev` from `frontend`. Vite proxies `/api` requests to `http://localhost:5000`; set `VITE_API_PROXY_TARGET` in `frontend/.env.local` to use another local backend address.
 
-The service layer in `src/services/api.js` currently expects:
+Signup offers Member and Core Team account types. Member accounts can only use member sign-in. Core Team requests remain pending and cannot sign in until an administrator approves them in **Core approvals** in the Core Team console; rejected requests remain blocked. Approved Core Team users can view the **Members** directory; only administrators can approve/reject applications. Signed-in members can update profile details and upload or remove a JPEG, PNG, or WebP profile image up to 2 MB. Member registration, sign-in, logout, current-user lookup, profile updates, and Core Team approval use backend routes. Sign-in uses an HTTP-only session cookie and passwords are hashed before storage.
 
-- Login: `POST`, JSON `{ email, password }`; a response containing a user/profile object or a session cookie usable by the current-user route. Logout: optional `POST` to clear a server session.
-- Registration: `POST`, JSON `{ name, registerNumber, email, password, domain, post, year }`. Domain is descriptive and does not grant an admin role.
-- Current user: `GET`; response with a user/profile object. An admin role must be included by the backend.
-- Post options: `GET`; response as a string array or `{ options: [...] }`. Registration intentionally remains unavailable until valid options can be populated.
-- Attendance status/history: `GET`; history may be a list or an object with `records`, `items`, or `data`.
-- Attendance submission: `POST`, JSON `{ code }`; the UI only shows success when the backend confirms it.
-- Admin activate/generate/deactivate: `POST`; deactivate is confirmed before sending. Admin records: `GET`.
-- Profile update: `PATCH`, JSON containing only fields explicitly listed in the current user response's `editableFields`.
-- Password reset is shown only when a reset route is configured; it uses `POST` `{ email }`.
-
-If the backend uses different paths, verbs, payload keys, or response fields, adapt the mapping and response parsing in `src/services/api.js` to its documented contract before configuring the environment. Missing routes display an explicit integration message; no mock operation is presented as saved or successful.
+For a separately hosted frontend, configure the backend `FRONTEND_ORIGINS` environment variable as a comma-separated list of permitted origins and proxy `/api` to the backend (or set `VITE_API_BASE_URL` and route paths in the frontend environment). Cookie credentials are sent with requests. Attendance status, code submission, and member history are available to signed-in users; approved Core Team members can activate/deactivate sessions, refresh the active code, and view attendance records. Activating a session generates a code immediately; the session and its code remain active until an administrator deactivates the session or refreshes the code. New registrations may include class and section, and attendance records retain those details with the member role and registration number. Admin attendance records include weekday and date, and can be printed or saved as a PDF from the records page. Attendance codes are only returned by protected admin routes. Session state is kept in memory and resets when the backend restarts; attendance records are stored in MongoDB.
 
 ## Club content and visual references
 
