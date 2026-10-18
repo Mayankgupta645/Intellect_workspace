@@ -9,12 +9,16 @@ const profile = require('./router/profilerouter');
 const admin = require('./router/adminrouter');
 const attendance = require('./router/Session');
 const app = express();
-const allowedOrigins = new Set(
-    (process.env.FRONTEND_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://[::1]:5173')
+const allowedOrigins = new Set([
+    'https://intellect-workspace-frontend.onrender.com',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://[::1]:5173',
+    ...(process.env.FRONTEND_ORIGINS || '')
         .split(',')
         .map((origin) => origin.trim())
         .filter(Boolean)
-);
+]);
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
