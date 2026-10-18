@@ -2,6 +2,8 @@ import logo from "../assets/intellects-badge.png";
 import astronaut from "../assets/intellects-astronaut.jpg";
 import loadingAstronaut from "../assets/intellects-astronaut-loading.png";
 import groupPhoto from "../assets/intellects-group-photo.png";
+import Group1 from "../assets/Group1.jpg";
+import Group2 from "../assets/Group2.png";
 import karthik from "../assets/member-karthik.jpg";
 import mayank from "../assets/member-mayank.jpg";
 import krishna from "../assets/member-krishna.jpg";
@@ -37,6 +39,8 @@ export const clubBrand = {
   astronaut,
   loadingAstronaut,
   groupPhoto,
+  Group1,
+  Group2
 };
 
 export const officialDomains = [

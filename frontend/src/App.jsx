@@ -3,19 +3,13 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 
 import { activities, artwork, clubBrand, clubUpdates, leadership, officialDomains, socialLinks } from "./data/club.js";
 import {
   ApiError,
-  apiRoutes,
-  authenticateLocalDemo,
   attendanceIsActive,
-  clearLocalDemoRole,
   explainApiError,
   isConfigured,
-  localDemoAvailable,
-  localDemoCredentials,
-  localDemoRole,
   request,
-  saveLocalDemoRole,
   unwrapList,
   unwrapObject,
+  userCanApproveCore,
   userIsAdmin,
 } from "./services/api.js";
 
@@ -30,21 +24,6 @@ const domains = [
   "Social Media",
 ];
 const years = ["1", "2", "3", "4"];
-
-function localDemoUser(role) {
-  const account = localDemoCredentials(role);
-  if (!account) return null;
-  const isAdmin = role === "admin";
-  return {
-    id: `local-demo-${role}`,
-    name: isAdmin ? "Admin Demo" : "Member Demo",
-    email: account.email,
-    role,
-    isAdmin,
-    isLocalDemo: true,
-    editableFields: [],
-  };
-}
 
 function useAuth() {
   return useContext(AuthContext);
@@ -82,12 +61,12 @@ function ThemeToggle() {
 }
 
 function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => localDemoUser(localDemoRole()));
-  const [loading, setLoading] = useState(() => isConfigured("me") && !localDemoRole());
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(() => isConfigured("me"));
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    if (!isConfigured("me") || localDemoRole()) return;
+    if (!isConfigured("me")) return;
     const controller = new AbortController();
     request("me", { signal: controller.signal })
       .then((data) => setUser(unwrapObject(data)))
@@ -101,16 +80,9 @@ function AuthProvider({ children }) {
     return () => controller.abort();
   }, []);
 
-  async function login(email, password) {
+  async function login(email, password, role) {
     setAuthError("");
-    const demoRole = authenticateLocalDemo(email, password);
-    if (demoRole) {
-      saveLocalDemoRole(demoRole);
-      const account = localDemoUser(demoRole);
-      setUser(account);
-      return account;
-    }
-    const data = await request("login", { method: "POST", body: { email, password } });
+    const data = await request("login", { method: "POST", body: { email, password, role } });
     let account = unwrapObject(data);
     if (!account || typeof account !== "object" || !("email" in account || "role" in account || "id" in account)) {
       if (!isConfigured("me")) {
@@ -126,19 +98,6 @@ function AuthProvider({ children }) {
   }
 
   async function logout() {
-    if (user?.isLocalDemo) {
-      try {
-        clearLocalDemoRole();
-        setUser(null);
-        setAuthError("");
-        return "";
-      } catch (reason) {
-        const error = explainApiError(reason);
-        setUser(null);
-        setAuthError(error);
-        return error;
-      }
-    }
     let error = "";
     if (isConfigured("logout")) {
       try {
@@ -155,7 +114,7 @@ function AuthProvider({ children }) {
   }
 
   const value = useMemo(
-    () => ({ user, loading, authError, login, logout, setAuthError }),
+    () => ({ user, loading, authError, login, logout, setAuthError, setUser }),
     [user, loading, authError],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -273,6 +232,8 @@ function App() {
           <Route path="/admin" element={<ProtectedRoute admin />}>
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="attendance" element={<AdminRecords />} />
+            <Route path="members" element={<AdminMembersRoute />} />
+            <Route path="approvals" element={<AdminApprovalsRoute />} />
           </Route>
           <Route path="/access-denied" element={<AccessDenied />} />
           <Route path="*" element={<NotFound />} />
@@ -671,9 +632,8 @@ function LoginPage({ mode }) {
   const { login, user, loading, authError } = useAuth();
   const navigate = useNavigate();
   const isAdmin = mode === "admin";
-  const demoCredentials = localDemoCredentials(mode);
-  const [email, setEmail] = useState(() => demoCredentials?.email || "");
-  const [password, setPassword] = useState(() => demoCredentials?.password || "");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -700,7 +660,7 @@ function LoginPage({ mode }) {
     }
     setBusy(true);
     try {
-      const account = await login(email.trim(), password);
+      const account = await login(email.trim(), password, isAdmin ? "core" : "member");
       if (isAdmin && !userIsAdmin(account)) {
         setError("This account is not authorised for Core Team access.");
         navigate("/access-denied", { replace: true });
@@ -738,10 +698,9 @@ function LoginPage({ mode }) {
       title={isAdmin ? "Command center." : "Welcome back."}
       subtitle={isAdmin ? "Sign in with your authorised Core Team account." : "Sign in to your member space and pick up where you left off."}
     >
-      {localDemoAvailable() && demoCredentials && <Notice kind="info">Local demo login: <strong>{demoCredentials.email}</strong> / <code>{demoCredentials.password}</code>. Demo account access is available only in local development; API-backed changes are disabled.</Notice>}
       <form className="form-stack" onSubmit={handleSubmit} noValidate>
-        <label className="field-label" htmlFor={`${mode}-email`}>{isAdmin ? "Email or account identifier" : "Email"}
-          <input id={`${mode}-email`} type={isAdmin ? "text" : "email"} autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={isAdmin ? "Email or identifier" : "you@example.com"} required />
+        <label className="field-label" htmlFor={`${mode}-email`}>Email
+          <input id={`${mode}-email`} type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required />
         </label>
         <div className="field-label">
           <label htmlFor={`${mode}-password`}>Password</label>
@@ -752,6 +711,7 @@ function LoginPage({ mode }) {
         <Notice kind="info">{authError}</Notice>
         <Button type="submit" disabled={busy}>{busy ? "Signing in…" : isAdmin ? "Enter Core Team" : "Sign in"} <span>↗</span></Button>
       </form>
+      {isAdmin && <Notice kind="info">Core Team access is available only after an administrator approves your request. Member accounts cannot sign in here.</Notice>}
       <p className="form-foot">{isAdmin ? <>Member instead? <Link to="/member/login">Go to member login</Link></> : <>New to INTELLECTS? <Link to="/signup">Create an account</Link></>}</p>
       <Link className="auth-switch" to={isAdmin ? "/member/login" : "/admin/login"}>{isAdmin ? "Member sign-in" : "Core Team sign-in"} <span>→</span></Link>
     </AuthPageShell>
@@ -769,32 +729,11 @@ function passwordRules(password) {
 
 function SignupPage() {
   const navigate = useNavigate();
-  const [values, setValues] = useState({ name: "", registerNumber: "", email: "", password: "", confirmPassword: "", domain: "", post: "", year: "" });
-  const [postOptions, setPostOptions] = useState([]);
-  const [optionsState, setOptionsState] = useState({ loading: isConfigured("postOptions"), error: "" });
+  const [values, setValues] = useState({ name: "", registerNumber: "", email: "", password: "", confirmPassword: "", domain: "", year: "", class: "", section: "", role: "member" });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState({ kind: "", text: "" });
-
-  useEffect(() => {
-    if (!isConfigured("postOptions")) {
-      setOptionsState({ loading: false, error: "Post choices are unavailable until accepted backend options are configured." });
-      return;
-    }
-    const controller = new AbortController();
-    request("postOptions", { signal: controller.signal })
-      .then((data) => {
-        const options = unwrapList(data).map((item) => typeof item === "string" ? item : item?.value || item?.label).filter(Boolean);
-        setPostOptions(options);
-        if (!options.length) setOptionsState({ loading: false, error: "The backend returned no post options; registration cannot be submitted yet." });
-        else setOptionsState({ loading: false, error: "" });
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") setOptionsState({ loading: false, error: explainApiError(error) });
-      });
-    return () => controller.abort();
-  }, []);
 
   function update(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -803,13 +742,13 @@ function SignupPage() {
 
   function validate() {
     const next = {};
-    for (const field of ["name", "registerNumber", "email", "password", "confirmPassword", "domain", "post", "year"]) {
+    for (const field of ["name", "registerNumber", "email", "password", "confirmPassword", "domain", "year", "class", "section"]) {
       if (!values[field].trim()) next[field] = "This field is required.";
     }
+    if (!["member", "core"].includes(values.role)) next.role = "Choose Member or Core Team.";
     if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) next.email = "Enter a valid email address.";
     if (passwordRules(values.password).some(([, passed]) => !passed)) next.password = "Meet all password requirements.";
     if (values.confirmPassword && values.password !== values.confirmPassword) next.confirmPassword = "Passwords do not match.";
-    if (values.post && !postOptions.includes(values.post)) next.post = "Choose a post returned by the backend.";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -832,12 +771,19 @@ function SignupPage() {
           email: values.email.trim(),
           password: values.password,
           domain: values.domain,
-          post: values.post,
           year: values.year,
+          class: values.class.trim(),
+          section: values.section.trim(),
+          role: values.role,
         },
       });
-      setFeedback({ kind: "success", text: result?.message || "The registration request was accepted by the service." });
-      setTimeout(() => navigate("/member/login"), 900);
+      setFeedback({
+        kind: "success",
+        text: result?.message || (values.role === "core"
+          ? "Core Team access requested. An administrator must approve your request before you can sign in."
+          : "Member account created successfully."),
+      });
+      setTimeout(() => navigate(values.role === "core" ? "/admin/login" : "/member/login"), 1200);
     } catch (error) {
       setFeedback({ kind: "error", text: explainApiError(error) });
     } finally {
@@ -847,29 +793,30 @@ function SignupPage() {
 
   const strength = passwordRules(values.password);
   return (
-    <AuthPageShell eyebrow="Your next chapter" title="Join the club." subtitle="Create a member account to connect with the INTELLECTS community." wide>
+    <AuthPageShell eyebrow="Your next chapter" title="Join the club." subtitle="Create a member account or request access to the Core Team." wide>
       <form className="form-stack signup-form" onSubmit={handleSubmit} noValidate>
         <div className="form-grid">
           <Field id="signup-name" label="Full name" value={values.name} onChange={(value) => update("name", value)} error={errors.name} autoComplete="name" />
           <Field id="signup-reg" label="Register number" value={values.registerNumber} onChange={(value) => update("registerNumber", value)} error={errors.registerNumber} />
           <Field id="signup-email" label="Email" type="email" value={values.email} onChange={(value) => update("email", value)} error={errors.email} autoComplete="email" />
+          <label className="field-label" htmlFor="signup-role">Account type
+            <select id="signup-role" value={values.role} onChange={(event) => update("role", event.target.value)} aria-invalid={Boolean(errors.role)}>
+              <option value="member">Member</option>
+              <option value="core">Core Team (requires approval)</option>
+            </select>{errors.role && <small className="field-error">{errors.role}</small>}
+          </label>
           <label className="field-label" htmlFor="signup-domain">Domain
             <select id="signup-domain" value={values.domain} onChange={(event) => update("domain", event.target.value)} aria-invalid={Boolean(errors.domain)}>
               <option value="">Choose a domain</option>{domains.map((domain) => <option key={domain}>{domain}</option>)}
             </select>{errors.domain && <small className="field-error">{errors.domain}</small>}
-          </label>
-          <label className="field-label" htmlFor="signup-post">Post / position
-            <select id="signup-post" value={values.post} onChange={(event) => update("post", event.target.value)} disabled={optionsState.loading || !postOptions.length} aria-invalid={Boolean(errors.post)}>
-              <option value="">{optionsState.loading ? "Loading backend options…" : "Choose an available post"}</option>{postOptions.map((post) => <option key={post}>{post}</option>)}
-            </select>
-            {optionsState.error && <small className="field-error">{optionsState.error}</small>}
-            {errors.post && <small className="field-error">{errors.post}</small>}
           </label>
           <label className="field-label" htmlFor="signup-year">Year
             <select id="signup-year" value={values.year} onChange={(event) => update("year", event.target.value)} aria-invalid={Boolean(errors.year)}>
               <option value="">Choose a year</option>{years.map((year) => <option value={year} key={year}>Year {year}</option>)}
             </select>{errors.year && <small className="field-error">{errors.year}</small>}
           </label>
+          <Field id="signup-class" label="Class" value={values.class} onChange={(value) => update("class", value)} error={errors.class} />
+          <Field id="signup-section" label="Section" value={values.section} onChange={(value) => update("section", value)} error={errors.section} />
           <div className="field-label">
             <label htmlFor="signup-password">Password</label>
             <span className="password-input"><input id="signup-password" type={showPassword ? "text" : "password"} value={values.password} onChange={(event) => update("password", event.target.value)} autoComplete="new-password" aria-invalid={Boolean(errors.password)} /><button type="button" onClick={() => setShowPassword((show) => !show)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button></span>
@@ -884,9 +831,9 @@ function SignupPage() {
         <div className="password-checklist" aria-label="Password strength requirements">
           {strength.map(([label, passed]) => <span className={passed ? "passed" : ""} key={label}><i>{passed ? "✓" : "·"}</i>{label}</span>)}
         </div>
-        <p className="privacy-note">Your domain describes your interests; it does not grant administrator access. No class field is requested because the backend contract was not provided.</p>
+        <p className="privacy-note">Member accounts cannot access the Core Team portal. Core Team sign-ups remain locked until an administrator approves them.</p>
         <Notice kind={feedback.kind}>{feedback.text}</Notice>
-        <Button type="submit" disabled={busy || optionsState.loading || !postOptions.length}>{busy ? "Creating account…" : "Create member account"} <span>↗</span></Button>
+        <Button type="submit" disabled={busy}>{busy ? "Creating account…" : values.role === "core" ? "Request Core Team access" : "Create member account"} <span>↗</span></Button>
       </form>
       <p className="form-foot">Already registered? <Link to="/member/login">Sign in</Link></p>
     </AuthPageShell>
@@ -921,6 +868,8 @@ function AppShell({ admin, authError, children }) {
     ? [
       { label: "Overview", path: "/admin/dashboard", icon: "overview" },
       { label: "Attendance records", path: "/admin/attendance", icon: "records" },
+      { label: "Members", path: "/admin/members", icon: "users" },
+      ...(userCanApproveCore(user) ? [{ label: "Core approvals", path: "/admin/approvals", icon: "users" }] : []),
     ]
     : [
       { label: "Overview", path: "/member/dashboard", icon: "overview" },
@@ -958,8 +907,7 @@ function AppShell({ admin, authError, children }) {
           <div className="portal-top-actions"><ThemeToggle /><div className="portal-user"><MemberAvatar user={user} /><span>{displayName(user)}</span><span className="user-presence" /></div></div>
         </header>
         <div className="portal-content">
-          {!user?.isLocalDemo && <Notice kind="error">{authError || logoutError}</Notice>}
-          {user?.isLocalDemo && <Notice kind="info">Signed in with a local demo account. API-backed actions are disabled and no backend data is changed.</Notice>}
+          <Notice kind="error">{authError || logoutError}</Notice>
           {children}
         </div>
       </div>
@@ -1185,14 +1133,47 @@ function MemberAttendance() {
 }
 
 function ProfilePage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const fields = ["name", "registerNumber", "email", "domain", "post", "year"];
-  const editableFields = Array.isArray(user?.editableFields) ? user.editableFields.filter((field) => fields.includes(field)) : [];
+  const profileFields = [...fields, "profilePicture"];
+  const editableFields = Array.isArray(user?.editableFields) ? user.editableFields.filter((field) => profileFields.includes(field)) : [];
   const [editing, setEditing] = useState(false);
-  const [values, setValues] = useState(() => Object.fromEntries(fields.map((field) => [field, user?.[field] ?? ""])));
+  const [values, setValues] = useState(() => Object.fromEntries(profileFields.map((field) => [field, user?.[field] ?? ""])));
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState({ kind: "", text: "" });
+  const [imageBusy, setImageBusy] = useState(false);
   const canEdit = isConfigured("profileUpdate") && editableFields.length > 0;
+
+  function selectProfilePicture(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setFeedback({ kind: "error", text: "Choose a JPEG, PNG, or WebP image." });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setFeedback({ kind: "error", text: "Choose an image no larger than 2 MB." });
+      return;
+    }
+
+    setImageBusy(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        setFeedback({ kind: "error", text: "The selected image could not be read." });
+      } else {
+        setValues((current) => ({ ...current, profilePicture: reader.result }));
+        setFeedback({ kind: "", text: "" });
+      }
+      setImageBusy(false);
+    };
+    reader.onerror = () => {
+      setFeedback({ kind: "error", text: "The selected image could not be read." });
+      setImageBusy(false);
+    };
+    reader.readAsDataURL(file);
+  }
 
   async function save(event) {
     event.preventDefault();
@@ -1201,7 +1182,12 @@ function ProfilePage() {
     try {
       const payload = Object.fromEntries(editableFields.map((field) => [field, values[field]]));
       const result = await request("profileUpdate", { method: "PATCH", body: payload });
-      setFeedback({ kind: "success", text: result?.message || "Profile changes were confirmed by the backend. Sign in again to refresh profile data." });
+      const updatedUser = unwrapObject(result);
+      if (updatedUser && typeof updatedUser === "object" && "email" in updatedUser) {
+        setUser(updatedUser);
+        setValues((current) => ({ ...current, ...updatedUser }));
+      }
+      setFeedback({ kind: "success", text: result?.message || "Profile updated successfully." });
       setEditing(false);
     } catch (error) {
       setFeedback({ kind: "error", text: explainApiError(error) });
@@ -1216,11 +1202,23 @@ function ProfilePage() {
       <DashboardPanel className="profile-page-panel">
         {!canEdit && <Notice kind="info">Profile editing is unavailable until the backend supplies an editable-fields allowlist and a profile update route.</Notice>}
         {editing ? <form className="profile-edit-form" onSubmit={save}>
-          {editableFields.map((field) => <label className="field-label" key={field}>{profileLabel(field)}
+          {editableFields.filter((field) => field !== "profilePicture").map((field) => <label className="field-label" key={field}>{profileLabel(field)}
             <input value={values[field]} onChange={(event) => setValues((current) => ({ ...current, [field]: event.target.value }))} />
           </label>)}
+          {editableFields.includes("profilePicture") && <div className="field-label profile-image-editor">
+            <span>Profile picture</span>
+            <div className="profile-image-preview">
+              {values.profilePicture ? <img src={values.profilePicture} alt="Selected profile preview" /> : <MemberAvatar user={user} className="profile-photo" />}
+              <label className="button button-ghost profile-image-button">
+                {imageBusy ? "Reading image…" : "Choose image"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectProfilePicture} disabled={imageBusy || busy} />
+              </label>
+              {values.profilePicture && <Button type="button" variant="ghost" onClick={() => setValues((current) => ({ ...current, profilePicture: "" }))}>Remove</Button>}
+            </div>
+            <small className="field-hint">JPEG, PNG, or WebP · max 2 MB</small>
+          </div>}
           <Notice kind={feedback.kind}>{feedback.text}</Notice>
-          <div className="button-row"><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button><Button type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button></div>
+          <div className="button-row"><Button type="submit" disabled={busy || imageBusy}>{busy ? "Saving…" : "Save changes"}</Button><Button type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button></div>
         </form> : <div className="profile-data-grid">
           {fields.map((field) => <div className="profile-data" key={field}><small>{profileLabel(field)}</small><strong>{user?.[field] || "Not provided"}</strong></div>)}
           <div className="profile-data"><small>Profile picture</small>{user?.profilePicture || user?.avatarUrl ? <MemberAvatar user={user} className="profile-photo" /> : <strong>Not provided</strong>}</div>
@@ -1231,24 +1229,157 @@ function ProfilePage() {
 }
 
 function profileLabel(field) {
-  return ({ name: "Name", registerNumber: "Register number", email: "Email", domain: "Domain", post: "Post / position", year: "Year" })[field] || field;
+  return ({ name: "Name", registerNumber: "Register number", email: "Email", domain: "Domain", post: "Post / position", year: "Year", profilePicture: "Profile picture" })[field] || field;
+}
+
+function AdminMembersRoute() {
+  const { user } = useAuth();
+  if (!userIsAdmin(user)) return <Navigate to="/admin/dashboard" replace />;
+  return <AdminMembers />;
+}
+
+function AdminMembers() {
+  const [members, setMembers] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    request("adminMembers", { signal: controller.signal })
+      .then((data) => setMembers(unwrapList(data)))
+      .catch((reason) => {
+        if (reason.name !== "AbortError") setError(explainApiError(reason));
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  const visibleMembers = members.filter((member) => filter === "all" || member.role === filter);
+  return (
+    <>
+      <PageTitle eyebrow="Core Team / directory" title="Registered members." subtitle="Member and Core Team accounts registered with INTELLECTS." />
+      <DashboardPanel className="records-panel">
+        <div className="panel-heading">
+          <span className="panel-title"><DashboardIcon name="users" /> MEMBER DIRECTORY</span>
+          <label className="directory-filter">Show
+            <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="all">Everyone</option>
+              <option value="member">Members</option>
+              <option value="core">Core Team</option>
+            </select>
+          </label>
+        </div>
+        {loading ? <div className="empty-state">Loading registered accounts…</div> : error ? <Notice kind="error">{error}</Notice> : visibleMembers.length ? (
+          <div className="member-directory">
+            {visibleMembers.map((member) => (
+              <article className="member-directory-card" key={member.id}>
+                <span className="directory-avatar">{member.name?.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase() || "I"}</span>
+                <div className="directory-member-details">
+                  <strong>{member.name || "Member"}</strong>
+                  <small>{member.email}</small>
+                  <small>{member.registerNumber || "No register number"} · {member.domain || "No domain"} · Year {member.year || "—"}</small>
+                </div>
+                <div className="directory-member-status">
+                  <span className={`status-pill ${member.role === "core" ? "status-on" : "status-off"}`}>{member.role === "core" ? "CORE TEAM" : "MEMBER"}</span>
+                  {member.role === "core" && <small>{member.coreApproval === "approved" ? "Approved" : member.coreApproval === "rejected" ? "Rejected" : "Pending approval"}</small>}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : <div className="empty-state">No accounts match this filter.</div>}
+      </DashboardPanel>
+    </>
+  );
+}
+
+function AdminApprovalsRoute() {
+  const { user } = useAuth();
+  if (!userCanApproveCore(user)) return <Navigate to="/admin/dashboard" replace />;
+  return <AdminApprovals />;
+}
+
+function AdminApprovals() {
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [feedback, setFeedback] = useState({ kind: "", text: "" });
+
+  async function refresh(clearFeedback = true) {
+    try {
+      const data = await request("coreApplications");
+      setApplications(unwrapList(data));
+      if (clearFeedback) setFeedback({ kind: "", text: "" });
+    } catch (error) {
+      setFeedback({ kind: "error", text: explainApiError(error) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function decide(application, decision) {
+    setBusy(application.id);
+    setFeedback({ kind: "", text: "" });
+    try {
+      const result = await request("coreApplications", {
+        method: "PATCH",
+        body: { userId: application.id, decision },
+      });
+      setFeedback({ kind: "success", text: result?.message || "Application decision saved." });
+      await refresh(false);
+    } catch (error) {
+      setFeedback({ kind: "error", text: explainApiError(error) });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <>
+      <PageTitle eyebrow="Administrator / access control" title="Core Team requests." subtitle="Approve applicants to enable Core Team sign-in, or reject their request." />
+      <Notice kind={feedback.kind}>{feedback.text}</Notice>
+      <DashboardPanel className="records-panel">
+        <div className="panel-heading"><span className="panel-title"><DashboardIcon name="users" /> PENDING APPLICATIONS</span><span>{applications.length} pending</span></div>
+        {loading ? <div className="empty-state">Loading applications…</div> : applications.length ? (
+          <div className="mini-history">
+            {applications.map((application) => (
+              <article className="history-row" key={application.id}>
+                <span className="history-date-mark"><DashboardIcon name="profile" size={17} /></span>
+                <span>
+                  <strong>{application.name || "Applicant"}</strong>
+                  <small>{application.email} · {application.registerNumber || "No register number"}</small>
+                  <small>{application.domain || "No domain"} · Year {application.year || "—"}</small>
+                </span>
+                <span className="button-row">
+                  <Button type="button" disabled={Boolean(busy)} onClick={() => decide(application, "approved")}>{busy === application.id ? "Saving…" : "Approve"}</Button>
+                  <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={() => decide(application, "rejected")}>Reject</Button>
+                </span>
+              </article>
+            ))}
+          </div>
+        ) : <div className="empty-state">There are no pending Core Team requests.</div>}
+      </DashboardPanel>
+    </>
+  );
 }
 
 function AdminDashboard() {
-  const { user } = useAuth();
-  const demoMode = Boolean(user?.isLocalDemo);
   const [status, setStatus] = useState(null);
   const [records, setRecords] = useState([]);
   const [recordData, setRecordData] = useState(null);
+  const [totalMembers, setTotalMembers] = useState(null);
   const [codeResult, setCodeResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState({ kind: "", text: "" });
 
   async function refresh() {
-    const [statusResult, recordsResult] = await Promise.allSettled([
+    const [statusResult, recordsResult, membersResult] = await Promise.allSettled([
       request("attendanceStatus"),
       request("adminRecords"),
+      request("adminMembers"),
     ]);
     const errors = [];
     if (statusResult.status === "fulfilled") setStatus(statusResult.value);
@@ -1257,6 +1388,9 @@ function AdminDashboard() {
       setRecordData(recordsResult.value);
       setRecords(unwrapList(recordsResult.value));
     } else errors.push(explainApiError(recordsResult.reason));
+    if (membersResult.status === "fulfilled") {
+      setTotalMembers(unwrapList(membersResult.value).length);
+    } else errors.push(explainApiError(membersResult.reason));
     if (errors.length) setFeedback({ kind: "error", text: [...new Set(errors)].join(" ") });
     setLoading(false);
   }
@@ -1271,7 +1405,8 @@ function AdminDashboard() {
     setFeedback({ kind: "", text: "" });
     try {
       const result = await request(route, { method: "POST" });
-      if (action === "generate") setCodeResult(result);
+      if (action === "activate" || action === "generate") setCodeResult(result);
+      if (action === "deactivate") setCodeResult(null);
       setFeedback({ kind: "success", text: result?.message || "The backend confirmed the requested action." });
       await refresh();
     } catch (error) {
@@ -1292,7 +1427,6 @@ function AdminDashboard() {
     }
   }
 
-  const totalMembers = recordData?.totalMembers ?? recordData?.summary?.totalMembers;
   return (
     <>
       <PageTitle eyebrow="Core Team / operations" title="Operations overview." subtitle="Manage attendance using backend-confirmed session controls." action={<span className="live-indicator"><i /> ADMIN CONSOLE</span>} />
@@ -1300,18 +1434,18 @@ function AdminDashboard() {
       <div className="admin-metric-grid">
         <Metric icon="attendance" label="Attendance session" value={status ? (attendanceIsActive(status) === null ? "Unknown" : attendanceIsActive(status) ? "Active" : "Inactive") : "Unavailable"} detail={status?.session?.name || status?.sessionName || status?.message || "No status data returned"} />
         <Metric icon="records" label="Attendance records" value={recordData ? records.length : "—"} detail={recordData?.totalRecords != null ? `${recordData.totalRecords} total returned` : "Count from current response"} />
-        <Metric icon="users" label="Registered members" value={totalMembers ?? "—"} detail={totalMembers == null ? "Not provided by backend" : "Backend-reported total"} />
+        <Metric icon="users" label="Registered members" value={totalMembers ?? "—"} detail={totalMembers == null ? "Loading registered accounts" : "Total member and Core Team accounts"} />
       </div>
       <DashboardPanel className="admin-controls">
         <div className="panel-heading"><span className="panel-title"><DashboardIcon name="attendance" /> SESSION CONTROLS</span><span className={`status-pill ${attendanceIsActive(status) ? "status-on" : "status-off"}`}>{status ? attendanceIsActive(status) === null ? "UNKNOWN" : attendanceIsActive(status) ? "ACTIVE" : "INACTIVE" : "UNAVAILABLE"}</span></div>
-        <p className="panel-description">{demoMode ? "This demo account is read-only; no attendance changes can be made." : "Every action is sent to the configured backend. No session status or code is generated locally."}</p>
+        <p className="panel-description">The session and its code stay active until an administrator deactivates the session or refreshes the code.</p>
         <div className="admin-action-row">
-          <Button onClick={() => runAdminAction("activate")} disabled={demoMode || Boolean(busy)}>{busy === "activate" ? "Activating…" : "Activate attendance"} <span>↗</span></Button>
-          <Button variant="soft" onClick={() => runAdminAction("generate")} disabled={demoMode || Boolean(busy)}>{busy === "generate" ? "Generating…" : "Generate code"} <span>⌁</span></Button>
-          <Button variant="danger" onClick={() => runAdminAction("deactivate")} disabled={demoMode || Boolean(busy)}>{busy === "deactivate" ? "Deactivating…" : "Deactivate session"} <span>×</span></Button>
+          <Button onClick={() => runAdminAction("activate")} disabled={Boolean(busy)}>{busy === "activate" ? "Activating…" : "Activate attendance"} <span>↗</span></Button>
+          <Button variant="soft" onClick={() => runAdminAction("generate")} disabled={Boolean(busy)}>{busy === "generate" ? "Refreshing…" : "Refresh code"} <span>⌁</span></Button>
+          <Button variant="danger" onClick={() => runAdminAction("deactivate")} disabled={Boolean(busy)}>{busy === "deactivate" ? "Deactivating…" : "Deactivate session"} <span>×</span></Button>
         </div>
         {codeResult && <div className="generated-code">
-          <div><small>TEMPORARY CODE · BACKEND RESPONSE</small><strong>{codeResult.code || codeResult.temporaryCode || codeResult.data?.code || "The backend response did not include a code field."}</strong><span>{codeResult.expiresAt ? `Expires ${formatDate(codeResult.expiresAt)}` : codeResult.session?.name || codeResult.sessionName || "Expiry/session information not supplied."}</span></div>
+            <div><small>ACTIVE CODE · BACKEND RESPONSE</small><strong>{codeResult.code || codeResult.temporaryCode || codeResult.data?.code || "The backend response did not include a code field."}</strong><span>{codeResult.session?.name || codeResult.sessionName || "Valid until the session is deactivated or the code is refreshed."}</span></div>
           {(codeResult.code || codeResult.temporaryCode || codeResult.data?.code) && <Button variant="ghost" onClick={copyCode}>Copy code</Button>}
         </div>}
       </DashboardPanel>
@@ -1332,6 +1466,7 @@ function AdminRecords() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 25;
   useEffect(() => {
@@ -1342,19 +1477,51 @@ function AdminRecords() {
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, []);
-  const filtered = records.filter((record) => [record.name, record.memberName, record.registerNumber, record.email, record.status].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase()));
+  const filtered = records.filter((record) => {
+    const matchesQuery = [record.name, record.memberName, record.registerNumber, record.email, record.status].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase());
+    const date = record.date || record.createdAt || record.timestamp;
+    return matchesQuery && (!selectedDate || localDateKey(date) === selectedDate);
+  });
   const pageCount = Math.ceil(filtered.length / pageSize);
   const visibleRecords = filtered.slice(page * pageSize, (page + 1) * pageSize);
+  const reportDate = selectedDate
+    ? formatLongDate(new Date(`${selectedDate}T12:00:00`))
+    : "Select a day to generate a day-specific report";
   return (
     <>
       <PageTitle eyebrow="Core Team / records" title="Attendance records." subtitle="Member identity and attendance details returned by the backend." />
       <DashboardPanel className="records-panel">
-        <div className="records-toolbar"><div className="panel-heading"><span>ALL RECORDS</span><span>{loading ? "Loading…" : `${filtered.length} shown`}</span></div><label className="search-field"><span className="sr-only">Search attendance records</span><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="Search records" /></label></div>
+        <div className="records-toolbar"><div className="panel-heading"><span>ATTENDANCE RECORDS</span><span>{loading ? "Loading…" : `${filtered.length} shown${selectedDate ? ` for ${formatLongDate(new Date(`${selectedDate}T12:00:00`))}` : ""}`}</span></div><label className="records-date-filter">Attendance day<input type="date" value={selectedDate} onChange={(event) => { setSelectedDate(event.target.value); setPage(0); }} /></label><label className="search-field"><span className="sr-only">Search attendance records</span><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="Search records" /></label><Button type="button" variant="soft" disabled={loading || Boolean(error) || !selectedDate || filtered.length === 0} onClick={() => window.print()}>Generate day PDF</Button></div>
         {loading ? <div className="empty-state">Loading attendance records…</div> : error ? <Notice kind="error">{error}</Notice> : filtered.length ? <>
           <HistoryTable records={visibleRecords} admin />
           {pageCount > 1 && <div className="pagination"><span>Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} of {filtered.length}</span><div><Button variant="ghost" type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>Previous</Button><span>Page {page + 1} of {pageCount}</span><Button variant="ghost" type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next</Button></div></div>}
         </> : <div className="empty-state">{records.length ? "No records match your search." : "The backend returned no attendance records."}</div>}
       </DashboardPanel>
+      {!loading && !error && selectedDate && filtered.length > 0 && <section className="attendance-print-report" aria-hidden="true">
+        <h1>Intellects Club Attendance on {reportDate}</h1>
+        <p className="attendance-report-date">{reportDate}</p>
+        <table>
+          <thead><tr><th>Member</th><th>Register number</th><th>Role</th><th>Class</th><th>Section</th><th>Session</th><th>Day and date</th><th>Status</th></tr></thead>
+          <tbody>{filtered.map((record, index) => <tr key={record.id || `${record.registerNumber || "record"}-${index}`}>
+            <td>{record.memberName || record.name || record.email || record.memberId || "—"}</td>
+            <td>{record.registerNumber || "—"}</td>
+            <td>{record.role || record.post || "—"}</td>
+            <td>{record.className || record.class || "—"}</td>
+            <td>{record.section || "—"}</td>
+            <td>{record.sessionName || record.eventName || record.sessionId || "Attendance"}</td>
+            <td>{formatDate(record.date || record.createdAt || record.timestamp)}</td>
+            <td>{record.status || record.attendanceStatus || "Recorded"}</td>
+          </tr>)}</tbody>
+        </table>
+        <footer>
+          <p>Generate by Intellects Attendance software</p>
+          <p>Intellects Workspace phase 1 ( by Intellects Member )</p>
+          <div className="attendance-signatures">
+            <div><span>VICE PRESIDENT</span><strong>MAYANK GUPTA</strong></div>
+            <div><span>PRESIDENT</span><strong>KARTHIK</strong></div>
+          </div>
+        </footer>
+      </section>}
     </>
   );
 }
@@ -1363,7 +1530,7 @@ function HistoryTable({ records, admin = false }) {
   return (
     <div className="table-scroll">
       <table className="data-table">
-        <thead><tr>{admin && <><th>Member</th><th>Register number</th></>}<th>Session</th><th>Date / time</th><th>Status</th></tr></thead>
+        <thead><tr>{admin && <><th>Member</th><th>Register number</th></>}<th>Session</th><th>{admin ? "Day, date / time" : "Date / time"}</th><th>Status</th></tr></thead>
         <tbody>{records.map((record, index) => <tr key={record.id || `${record.registerNumber || "record"}-${index}`}>
           {admin && <><td>{record.memberName || record.name || record.email || record.memberId || "—"}</td><td>{record.registerNumber || "—"}</td></>}
           <td>{record.sessionName || record.eventName || record.sessionId || "Attendance"}</td>
@@ -1378,7 +1545,21 @@ function HistoryTable({ records, admin = false }) {
 function formatDate(value) {
   if (!value) return "Date not provided";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString(undefined, { weekday: "long", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function localDateKey(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatLongDate(value) {
+  return value.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 
 function AccessDenied() {
