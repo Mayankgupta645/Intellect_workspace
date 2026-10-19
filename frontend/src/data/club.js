@@ -58,7 +58,7 @@ export const leadership = [
   { name: "Darshan", role: "Vice Secretary", team: "CORE TEAM", image: darshan },
   { name: "Akansha", role: "Technical Lead", team: "Technical Team", image: akansha },
   { name: "Hari Supriya", role: "Technical Co-Lead", team: "Technical Team", image: hari },
-  { name: "S. Mounisha", role: "Competitive Programming Lead", team: "Competitive Programming", image: mounisha },
+  { name: "Mounisha.A", role: "Competitive Programming Lead", team: "Competitive Programming", image: mounisha },
   { name: "Shabaz Sheikh", role: "Competitive Programming Co-Lead", team: "Competitive Programming", image: shabaz },
   { name: "Grishma", role: "Event Management Lead", team: "Event Management", image: grishma },
   { name: "Jai Karthick", role: "Event Management Co-Lead", team: "Event Management", image: jai },

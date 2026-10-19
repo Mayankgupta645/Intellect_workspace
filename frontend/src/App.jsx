@@ -1288,6 +1288,8 @@ function AdminMembers() {
   const [members, setMembers] = useState([]);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [feedback, setFeedback] = useState({ kind: "", text: "" });
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1302,9 +1304,30 @@ function AdminMembers() {
   }, []);
 
   const visibleMembers = members.filter((member) => filter === "all" || member.role === filter);
+
+  async function removeMember(member) {
+    if (!window.confirm(`Permanently remove ${member.name || "this account"} from the database?`)) return;
+    setBusy(member.id);
+    setFeedback({ kind: "", text: "" });
+    try {
+      const result = await request("adminMembers", {
+        method: "DELETE",
+        body: { userId: member.id },
+      });
+      setMembers((current) => current.filter((item) => item.id !== member.id));
+      setFeedback({ kind: "success", text: result?.message || "Member account removed." });
+    } catch (reason) {
+      setFeedback({ kind: "error", text: explainApiError(reason) });
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <>
       <PageTitle eyebrow="Core Team / directory" title="Registered members." subtitle="Member and Core Team accounts registered with INTELLECTS." />
+      <Notice kind="info">If your Core Team request was rejected, sign up again using account type Member, not Core Team.</Notice>
+      <Notice kind={feedback.kind}>{feedback.text}</Notice>
       <DashboardPanel className="records-panel">
         <div className="panel-heading">
           <span className="panel-title"><DashboardIcon name="users" /> MEMBER DIRECTORY</span>
@@ -1330,6 +1353,7 @@ function AdminMembers() {
                   <span className={`status-pill ${member.role === "core" ? "status-on" : "status-off"}`}>{member.role === "core" ? "CORE TEAM" : "MEMBER"}</span>
                   {member.role === "core" && <small>{member.coreApproval === "approved" ? "Approved" : member.coreApproval === "rejected" ? "Rejected" : "Pending approval"}</small>}
                 </div>
+                <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={() => removeMember(member)}>{busy === member.id ? "Removing…" : "Remove"}</Button>
               </article>
             ))}
           </div>
@@ -1400,7 +1424,7 @@ function AdminApprovals() {
                 </span>
                 <span className="button-row">
                   <Button type="button" disabled={Boolean(busy)} onClick={() => decide(application, "approved")}>{busy === application.id ? "Saving…" : "Approve"}</Button>
-                  <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={() => decide(application, "rejected")}>Reject</Button>
+                  <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={() => decide(application, "rejected")}>Reject & remove</Button>
                 </span>
               </article>
             ))}
