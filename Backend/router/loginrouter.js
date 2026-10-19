@@ -14,7 +14,10 @@ router.post('/', async (req, res) => {
     try {
         const user = await SignUp_module.findOne({ Email: caseInsensitiveExact(email) }).select('+Password');
         if (!user || !(await verifyPassword(password, user.Password))) {
-            return res.status(401).json({ message: 'Email or password is incorrect.', code: 'INVALID_CREDENTIALS' });
+            const message = requestedRole === 'core'
+                ? 'Email or password is incorrect. If your Core Team request was rejected, sign up using account type Member, not Core Team.'
+                : 'Email or password is incorrect.';
+            return res.status(401).json({ message, code: 'INVALID_CREDENTIALS' });
         }
         if (!user.Password.startsWith('scrypt$')) {
             user.Password = await hashPassword(password);
@@ -29,7 +32,9 @@ router.post('/', async (req, res) => {
         if (user.Role === 'core' && user.CoreApproval !== 'approved') {
             const pending = user.CoreApproval === 'pending';
             return res.status(403).json({
-                message: pending ? 'Your Core Team request is waiting for administrator approval.' : 'Your Core Team request was not approved.',
+                message: pending
+                    ? 'Your Core Team request is waiting for administrator approval.'
+                    : 'Your Core Team request was rejected. Please sign up again with account type Member, not Core Team.',
                 code: pending ? 'CORE_PENDING' : 'CORE_REJECTED'
             });
         }
