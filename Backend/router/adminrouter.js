@@ -12,7 +12,7 @@ router.get('/members', requireSession, requireCoreAccess, async (req, res) => {
             ]
         })
             .sort({ createdAt: -1 })
-            .select('Name Registration_no Email Domain Post Year Role CoreApproval');
+            .select('Name Registration_no Email Domain Post Year Class Section Role CoreApproval');
         return res.json({ users: users.map(publicUser) });
     } catch (error) {
         console.error('Member directory lookup failed:', error.message);

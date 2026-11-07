@@ -1533,6 +1533,7 @@ function Metric({ icon, label, value, detail }) {
 
 function AdminRecords() {
   const [records, setRecords] = useState([]);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -1541,8 +1542,14 @@ function AdminRecords() {
   const pageSize = 25;
   useEffect(() => {
     const controller = new AbortController();
-    request("adminRecords", { signal: controller.signal })
-      .then((data) => setRecords(unwrapList(data)))
+    Promise.all([
+      request("adminRecords", { signal: controller.signal }),
+      request("adminMembers", { signal: controller.signal }),
+    ])
+      .then(([recordData, memberData]) => {
+        setRecords(unwrapList(recordData));
+        setMembers(unwrapList(memberData));
+      })
       .catch((reason) => { if (reason.name !== "AbortError") setError(explainApiError(reason)); })
       .finally(() => setLoading(false));
     return () => controller.abort();
@@ -1557,30 +1564,54 @@ function AdminRecords() {
   const reportDate = selectedDate
     ? formatLongDate(new Date(`${selectedDate}T12:00:00`))
     : "Select a day to generate a day-specific report";
+  const dayRecords = selectedDate
+    ? records.filter((record) => localDateKey(record.date || record.createdAt || record.timestamp) === selectedDate)
+    : [];
+  const presentMemberIds = new Set(dayRecords.map((record) => String(record.memberId || "")).filter(Boolean));
+  const reportRows = members.map((member) => ({
+    ...member,
+    attendanceStatus: presentMemberIds.has(String(member.id)) ? "Present" : "Absent",
+  }));
+  const memberIds = new Set(members.map((member) => String(member.id)));
+  dayRecords.forEach((record) => {
+    const memberId = String(record.memberId || "");
+    if (!memberId || memberIds.has(memberId)) return;
+    memberIds.add(memberId);
+    reportRows.push({
+      id: record.id || memberId,
+      name: record.memberName || record.name || record.email || memberId,
+      registerNumber: record.registerNumber,
+      post: record.role || record.post,
+      class: record.className || record.class,
+      section: record.section,
+      attendanceStatus: "Present",
+    });
+  });
+  reportRows.sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")));
   return (
     <>
       <PageTitle eyebrow="Core Team / records" title="Attendance records." subtitle="Member identity and attendance details returned by the backend." />
       <DashboardPanel className="records-panel">
-        <div className="records-toolbar"><div className="panel-heading"><span>ATTENDANCE RECORDS</span><span>{loading ? "Loading…" : `${filtered.length} shown${selectedDate ? ` for ${formatLongDate(new Date(`${selectedDate}T12:00:00`))}` : ""}`}</span></div><label className="records-date-filter">Attendance day<input type="date" value={selectedDate} onChange={(event) => { setSelectedDate(event.target.value); setPage(0); }} /></label><label className="search-field"><span className="sr-only">Search attendance records</span><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="Search records" /></label><Button type="button" variant="soft" disabled={loading || Boolean(error) || !selectedDate || filtered.length === 0} onClick={() => window.print()}>Generate day PDF</Button></div>
+        <div className="records-toolbar"><div className="panel-heading"><span>ATTENDANCE RECORDS</span><span>{loading ? "Loading…" : `${filtered.length} shown${selectedDate ? ` for ${formatLongDate(new Date(`${selectedDate}T12:00:00`))}` : ""}`}</span></div><label className="records-date-filter">Attendance day<input type="date" value={selectedDate} onChange={(event) => { setSelectedDate(event.target.value); setPage(0); }} /></label><label className="search-field"><span className="sr-only">Search attendance records</span><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="Search records" /></label><Button type="button" variant="soft" disabled={loading || Boolean(error) || !selectedDate} onClick={() => window.print()}>Generate day PDF</Button></div>
         {loading ? <div className="empty-state">Loading attendance records…</div> : error ? <Notice kind="error">{error}</Notice> : filtered.length ? <>
           <HistoryTable records={visibleRecords} admin />
           {pageCount > 1 && <div className="pagination"><span>Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} of {filtered.length}</span><div><Button variant="ghost" type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>Previous</Button><span>Page {page + 1} of {pageCount}</span><Button variant="ghost" type="button" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next</Button></div></div>}
         </> : <div className="empty-state">{records.length ? "No records match your search." : "The backend returned no attendance records."}</div>}
       </DashboardPanel>
-      {!loading && !error && selectedDate && filtered.length > 0 && <section className="attendance-print-report" aria-hidden="true">
+      {!loading && !error && selectedDate && <section className="attendance-print-report" aria-hidden="true">
         <h1>Intellects Club Attendance on {reportDate}</h1>
         <p className="attendance-report-date">{reportDate}</p>
         <table>
           <thead><tr><th>Member</th><th>Register number</th><th>Role</th><th>Class</th><th>Section</th><th>Session</th><th>Day and date</th><th>Status</th></tr></thead>
-          <tbody>{filtered.map((record, index) => <tr key={record.id || `${record.registerNumber || "record"}-${index}`}>
-            <td>{record.memberName || record.name || record.email || record.memberId || "—"}</td>
-            <td>{record.registerNumber || "—"}</td>
-            <td>{record.role || record.post || "—"}</td>
-            <td>{record.className || record.class || "—"}</td>
-            <td>{record.section || "—"}</td>
-            <td>{record.sessionName || record.eventName || record.sessionId || "Attendance"}</td>
-            <td>{formatDate(record.date || record.createdAt || record.timestamp)}</td>
-            <td>{record.status || record.attendanceStatus || "Recorded"}</td>
+          <tbody>{reportRows.map((member, index) => <tr key={member.id || `${member.registerNumber || "member"}-${index}`}>
+            <td>{member.name || member.memberName || member.email || member.memberId || "—"}</td>
+            <td>{member.registerNumber || "—"}</td>
+            <td>{member.post || member.role || "—"}</td>
+            <td>{member.class || member.className || "—"}</td>
+            <td>{member.section || "—"}</td>
+            <td>Attendance</td>
+            <td>{reportDate}</td>
+            <td>{member.attendanceStatus}</td>
           </tr>)}</tbody>
         </table>
         <footer>
